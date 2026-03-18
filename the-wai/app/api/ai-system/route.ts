@@ -4,7 +4,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
 if (!OPENAI_API_KEY || !GEMINI_API_KEY) {
-  console.error('❌ API KEY 없음', {
+  console.error('API KEY missing', {
     openai: !!OPENAI_API_KEY,
     gemini: !!GEMINI_API_KEY,
   })
@@ -14,6 +14,7 @@ if (!OPENAI_API_KEY || !GEMINI_API_KEY) {
     { status: 500 }
   )
 }
+
 // ── Types ──────────────────────────────────────────────
 interface Payload {
   goal: string
