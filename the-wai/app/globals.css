@@ -1,0 +1,56 @@
+:root {
+  --bg: #0a0a0b;
+  --surface: #111113;
+  --border: rgba(255,255,255,0.07);
+  --border-bright: rgba(255,255,255,0.15);
+  --text-primary: #f0efed;
+  --text-secondary: rgba(240,239,237,0.45);
+  --text-tertiary: rgba(240,239,237,0.25);
+  --accent: #e8e0d0;
+  --accent-warm: #c8b89a;
+  --error: #e05c5c;
+  --success: #6cc97e;
+  --radius: 4px;
+  --radius-lg: 8px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: 'Noto Sans KR', sans-serif;
+  font-weight: 300;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-bright); border-radius: 2px; }
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes loaderSlide { 0% { left: -100%; } 100% { left: 100%; } }
+@keyframes hideI {
+  0%  { opacity: 1; transform: rotateY(0deg); }
+  49% { opacity: 1; transform: rotateY(90deg); }
+  50%, 100% { opacity: 0; }
+}
+@keyframes showExclaim {
+  0%, 49% { opacity: 0; transform: rotateY(-90deg); }
+  50%     { opacity: 1; transform: rotateY(-90deg); }
+  100%    { opacity: 1; transform: rotateY(0deg); }
+}
