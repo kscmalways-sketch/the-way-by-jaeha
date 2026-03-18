@@ -141,35 +141,19 @@ async function callOpenAI(system: string, user: string, requestId: string): Prom
   }
 }
 
-/* -------------------------
-   Gemini 호출(옵션) — 실패해도 전체 실패 아님
-   - Google Generative API 모델 버전 문제로 404가 나던 케이스가 있었음.
-   - 여기선 안전하게 실패를 잡아 로깅만 함.
-   ------------------------- */
+// --- REPLACE START: callGemini function ---
 async function callGemini(system: string, user: string, requestId: string): Promise<AIResult | null> {
+  // Gemini 호출을 완전히 비활성화합니다.
+  // (로그만 기록하고 null 반환 — merge()에서 OpenAI 결과만 사용됩니다.)
   try {
-    console.info(`[${requestId}] callGemini start`);
-    // NOTE: Gemini 모델/엔드포인트는 변경될 수 있으므로 실패시 null 반환.
-    const endpoint = `https://generativelanguage.googleapis.com/v1beta2/models/text-bison-001:generateText?key=${GEMINI_API_KEY}`;
+    console.info(`[${requestId}] Gemini call disabled by config — skipping call.`);
+  } catch (e) {
+    // 로그 실패하더라도 아무것도 하지 않고 null 반환 보장
+  }
+  return null;
+}
+// --- REPLACE END ---
 
-    const body = {
-      prompt: { text: `${system}\n\n${user}` },
-      temperature: 0.3,
-      maxOutputTokens: 800,
-    };
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-
-    const txt = await res.text();
-    if (!res.ok) {
-      console.error(`[${requestId}] Gemini returned ${res.status}`, txt);
-      // 실패해도 전체 실패 아님: null 반환
-      return null;
-    }
 
     // Google 응답의 후보 텍스트 추출 시도
     try {
