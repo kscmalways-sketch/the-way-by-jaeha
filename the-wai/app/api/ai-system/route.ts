@@ -46,10 +46,17 @@ export async function POST(req: NextRequest) {
     const user   = buildUser(payload)
 
     // Dual AI: call OpenAI + Gemini in parallel
-    const [gptResult, gemResult] = await Promise.all([
-      callOpenAI(system, user),
-      callGemini(system, user),
-    ])
+    const results = await Promise.allSettled([
+  callOpenAI(system, user),
+  callGemini(system, user),
+])
+
+const gptResult =
+  results[0].status === 'fulfilled' ? results[0].value : null
+
+const gemResult =
+  results[1].status === 'fulfilled' ? results[1].value : null
+
 
     const merged = merge(gptResult, gemResult)
     return NextResponse.json(merged)
@@ -85,23 +92,52 @@ async function callOpenAI(system: string, user: string): Promise<AIResult | null
 
 // ── Gemini ─────────────────────────────────────────────
 async function callGemini(system: string, user: string): Promise<AIResult | null> {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${system}\n\n${user}` }] }],
-        generationConfig: { temperature: 0.4 },
-      }),
+  try {
+    if (!process.env.GEMINI_API_KEY) {
+      console.error("❌ GEMINI_API_KEY 없음")
+      return null
     }
-  )
 
-  if (!res.ok) throw new Error(`Gemini error ${res.status}: ${await res.text()}`)
-  const data = await res.json()
-  const text = data.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
-  return parseJSON(text)
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: `${system}\n\n${user}` }] }],
+          generationConfig: { temperature: 0.4 },
+        }),
+      }
+    )
+
+    // 🔥 응답 실패 디버깅
+    if (!res.ok) {
+      const errText = await res.text()
+      console.error("🔥 Gemini API Error:", errText)
+      return null // ← 여기 중요 (throw ❌)
+    }
+
+    const data = await res.json()
+
+    console.log("✅ Gemini raw response:", JSON.stringify(data))
+
+    const text =
+      data?.candidates?.[0]?.content?.parts?.[0]?.text ?? ''
+
+    if (!text) {
+      console.error("❌ Gemini 응답 text 없음", data)
+      return null
+    }
+
+    return parseJSON(text)
+
+  } catch (err) {
+    console.error("💥 Gemini 호출 실패:", err)
+    return null
+  }
 }
+
+
 
 // ── Merge dual results ──────────────────────────────────
 function merge(a: AIResult | null, b: AIResult | null): AIResult {
