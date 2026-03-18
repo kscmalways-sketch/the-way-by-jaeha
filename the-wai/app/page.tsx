@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 
 // ── Types ───────────────────────────────────────────────
 interface FormField {
@@ -103,10 +103,14 @@ function StepCard({ step, index }: { step: RoadmapStep; index: number }) {
   const [open, setOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
-  const copy = () => {
-    navigator.clipboard.writeText(step.prompt)
-    setCopied(true)
-    setTimeout(() => setCopied(false), 2000)
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(step.prompt)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      setCopied(false)
+    }
   }
 
   return (
@@ -143,20 +147,25 @@ function ErrorSection({ currentGoal }: { currentGoal: string }) {
   const submit = async () => {
     if (!text.trim()) return
     setLoading(true); setSol(null)
-    const res = await fetch('/api/ai-system', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ goal: currentGoal, answers: null, error: text }),
-    })
-    const data = await res.json()
-    if (data.type === 'error_solution') setSol(data)
-    setLoading(false)
+    try {
+      const res = await fetch('/api/ai-system', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ goal: currentGoal, answers: null, error: text }),
+      })
+      const data = await res.json()
+      if (data?.type === 'error_solution') setSol(data)
+    } catch {
+      // 무시
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
     <div style={S.errCard}>
       <div style={S.errToggle} onClick={() => setOpen(o => !o)}>
-        <span style={{ color: 'var(--error)', fontSize: 14 }}>⚠</span>
+        <span style={{ color: 'var(--error)', fontSize: 14 }}></span>
         <span style={S.errLbl}>오류가 생겼으면 알려주세요</span>
         <span style={{ color: 'var(--text-tertiary)', fontSize: 11, transition: 'transform 0.2s', transform: open ? 'rotate(180deg)' : 'none' }}>▾</span>
       </div>
@@ -204,23 +213,37 @@ export default function Home() {
   const [isFollowUp, setIsFollowUp]       = useState(false)
 
   const formRefs = useRef<Record<string, HTMLInputElement>>({})
+  const procIvRef = useRef<number | null>(null)
 
-  // Loader
-  if (typeof window !== 'undefined' && !loaderHidden) {
-    setTimeout(() => setLoaderHidden(true), 2500)
-  }
+  // Loader: 안전하게 useEffect에서 처리
+  useEffect(() => {
+    const t = window.setTimeout(() => setLoaderHidden(true), 1400)
+    return () => clearTimeout(t)
+  }, [])
 
-  // Processing animation
+  // Processing animation - 안전하게 interval 관리
   const runProc = (labels: string[]) => {
     setProcSteps(labels)
     setProcIdx(0)
+    if (procIvRef.current) {
+      clearInterval(procIvRef.current)
+      procIvRef.current = null
+    }
     let i = 0
-    const iv = setInterval(() => {
+    procIvRef.current = window.setInterval(() => {
       i++
       if (i < labels.length) setProcIdx(i)
-      else clearInterval(iv)
+      else {
+        if (procIvRef.current) { clearInterval(procIvRef.current); procIvRef.current = null }
+      }
     }, 700)
   }
+
+  useEffect(() => {
+    return () => {
+      if (procIvRef.current) { clearInterval(procIvRef.current); procIvRef.current = null }
+    }
+  }, [])
 
   const callAPI = async (payload: object) => {
     const res = await fetch('/api/ai-system', {
@@ -232,15 +255,20 @@ export default function Home() {
     return res.json()
   }
 
-  // Step 1: Submit goal
+  // Step 1: Submit goal (Gemini 비활성화 — front에서 표시 문자열 제거)
   const submitGoal = async () => {
     if (!goal.trim()) return
     setPhase('processing')
-    runProc(['목표 분석 중…', 'GPT-4o 처리 중…', 'Gemini 처리 중…', '결과 병합 중…'])
+    // GPT 전용 단계 표시 (Gemini 표기는 제거)
+    runProc(['목표 분석 중…', 'GPT 처리 중…', '프롬프트 생성 중…'])
     try {
       const data = await callAPI({ goal, answers: null, error: null })
-      if (data.type === 'form')     { setFields(data.fields); setPhase('form') }
-      else if (data.type === 'roadmap') { setSteps(data.steps); setPhase('roadmap') }
+      if (data?.type === 'form')      { setFields(data.fields); setPhase('form') }
+      else if (data?.type === 'roadmap') { setSteps(data.steps ?? []); setPhase('roadmap') }
+      else {
+        setFatalError('서버 응답이 예상과 다릅니다.')
+        setPhase('error-result')
+      }
     } catch (e: unknown) {
       setFatalError(e instanceof Error ? e.message : '알 수 없는 오류'); setPhase('error-result')
     }
@@ -251,7 +279,7 @@ export default function Home() {
     const a: Record<string, string> = {}
     let missing = false
     fields.forEach(f => {
-      const v = formRefs.current[f.key]?.value.trim() ?? ''
+      const v = formRefs.current[f.key]?.value?.trim() ?? ''
       if (f.required && !v) { missing = true; if (formRefs.current[f.key]) formRefs.current[f.key].style.borderBottomColor = 'var(--error)' }
       else if (formRefs.current[f.key]) formRefs.current[f.key].style.borderBottomColor = ''
       a[f.key] = v || '(not specified)'
@@ -259,17 +287,16 @@ export default function Home() {
     if (missing) return
     setAnswers(a)
     setPhase('processing')
-    runProc(['답변 분석 중…', 'GPT-4o 처리 중…', 'Gemini 처리 중…', '병합 및 정제 중…', '프롬프트 생성 중…'])
+    runProc(['답변 분석 중…', 'GPT 처리 중…', '프롬프트 정리 중…', '프롬프트 생성 중…'])
     try {
       const data = await callAPI({ goal, answers: a, error: null })
-      if (data.type === 'form' && followUpCount < 1) {
+      if (data?.type === 'form' && followUpCount < 1) {
         setFollowUpCount(c => c + 1); setFields(data.fields); setIsFollowUp(true); setPhase('form')
-      } else if (data.type === 'roadmap') {
-        setSteps(data.steps); setPhase('roadmap')
+      } else if (data?.type === 'roadmap') {
+        setSteps(data.steps ?? []); setPhase('roadmap')
       } else {
-        // force roadmap
         const forced = await callAPI({ goal, answers: a, error: null, forceRoadmap: true })
-        setSteps(forced.steps ?? []); setPhase('roadmap')
+        setSteps(forced?.steps ?? []); setPhase('roadmap')
       }
     } catch (e: unknown) {
       setFatalError(e instanceof Error ? e.message : '알 수 없는 오류'); setPhase('error-result')
@@ -280,7 +307,7 @@ export default function Home() {
     setGoal(''); setFields([]); setAnswers({}); setSteps([])
     setFollowUpCount(0); setIsFollowUp(false); setFatalError('')
     setPhase('goal')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   return (
@@ -385,3 +412,4 @@ export default function Home() {
     </>
   )
 }
+
